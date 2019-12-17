@@ -2,16 +2,24 @@ import socket
 import threading
 import json
 import time
+import base64
+import uuid
 from tkinter import *
+from tkinter import filedialog
 from tkmacosx import Button
+from PIL import Image, ImageTk
+from signal import signal, SIGPIPE, SIG_DFL
+
+signal(SIGPIPE,SIG_DFL)
 
 HOST = '127.0.0.1'  # 主机地址
 PORT = 8888  # 端口号
-BUFFSIZE = 2048  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
+BUFFSIZE = 1024  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
 ADDR = (HOST, PORT)  # 链接地址
 count = 0
 userlist = {}
 grouplist = {}
+image_fold_path = '/Users/rodrick/Documents/python/Chatroom/temp/img'
 
 
 class Client:
@@ -42,7 +50,7 @@ class Client:
         """错误提示界面"""
         errtk = Tk()
         errtk.geometry('250x120')
-        errtk.title("加入聊天室失败")
+        errtk.title("错误")
         frame = Frame(errtk, bg='#3C3F41')
         frame.pack(expand=YES, fill=BOTH)
         Label(frame, bg='#3C3F41', fg='#00FA92', text=info).pack(padx=5, pady=20, fill='x')
@@ -62,9 +70,9 @@ class Client:
                 self.parent.error_msg("用户名不能为空")
                 return False
             self.parent.username = username
-            data = {"type": "login", "username": username}
-            json_data = json.dumps(data)
             try:
+                data = {"type": "login", "username": username}
+                json_data = json.dumps(data)
                 self.parent.connect()
             except Exception as err:
                 print(err)
@@ -156,7 +164,7 @@ class Client:
                 bt_clear = Button(f, bg='#3C3F41', fg='#DBBF6C', width=50, text="清屏", command=lambda: text_area.delete(0.0, END))
                 bt_clear.place(x=560, y=365, anchor=CENTER)
 
-                bt_pic = Button(f, bg='#3C3F41', fg='#D636D2', width=55, text="图片", font="Arial, 14", command=lambda: self.send(parent.socket, chat_name, et_input))
+                bt_pic = Button(f, bg='#3C3F41', fg='#D636D2', width=55, text="图片", font="Arial, 14", command=lambda: self.picture(parent.socket, chat_name))
                 bt_pic.place(x=110, y=405, anchor=CENTER)
 
                 bt_file = Button(f, bg='#3C3F41', fg='#D636D2', width=55, text="文件", font="Arial, 14", command=lambda: self.send(parent.socket, chat_name, et_input))
@@ -235,34 +243,101 @@ class Client:
 
             def create_group(self, entry, tk, listbox, parent_tk):
                 group_name = entry.get()
-                if group_name == "":
-                    self.parent.parent.error_msg("群聊名称不能为空")
-                else:
+                group_namelist = [self.parent.username]
+                send_grouplist = {}
+                try:
+                    index_list = listbox.curselection()
+                    if group_name == "":
+                        group_name = self.parent.username
+                        for index in range(len(index_list)):
+                            print(index)
+                            group_name += '、' + listbox.get(index)
+                            group_namelist.append(listbox.get(index))
+                        group_name += '的群聊'
+
+                    else:
+                        if group_name not in grouplist:
+                            for index in range(len(index_list)):
+                                group_namelist.append(listbox.get(index))
+                        else:
+                            self.parent.parent.error_msg("该群聊名称已存在")
+                            return False
+                    grouplist[group_name] = group_namelist
+                    send_grouplist[group_name] = group_namelist
                     tk.destroy()
                     parent_tk.destroy()
+                except:
+                    self.parent.parent.error_msg("未选中任何联系人")
+                data = {'type': 'create_group', 'group': send_grouplist, 'username': self.parent.username}
+                json_data = json.dumps(data)
+                json_data = str.encode(json_data)
+                self.parent.socket.send(json_data)
+                print('__send__' + str(json_data))
+                print(group_name)
+                print(group_namelist)
+                print(grouplist)
+
+            def picture(self, socket, chat_name):
+                filename = filedialog.askopenfilename(title='请选择发送的图片')
+                to_user = chat_name['text']
+                username = self.parent.username
+                flag = 1
+                if filename:
+                    print(filename)
+                    name = filename.split('/')[-1]
+                    print(name)
+                    image_64 = base64.b64encode(open(filename, "rb").read())
+                    image_64 = image_64.decode('ascii')
+                    send_data = 0
+                    if to_user == '群聊':
+                        while flag == 1:
+                            if send_data + BUFFSIZE < len(image_64):
+                                print(image_64[send_data:send_data+BUFFSIZE-1])
+                                send_image_64 = image_64[send_data:send_data + BUFFSIZE-1]
+                                data = {'type': 'group_pic', 'image_64': send_image_64,
+                                        'username': username, 'end': 'False', 'pic_size': len(image_64)}
+                                send_data += BUFFSIZE
+                            else:
+                                send_image_64 = image_64[send_data:len(image_64)-1]
+                                data = {'type': 'group_pic', 'image_64': send_image_64,
+                                        'username': username, 'end': 'True', 'pic_size': len(image_64)}
+                                flag = 0
+                            json_data = json.dumps(data)
+                            json_data = str.encode(json_data)
+                            socket.send(json_data)
+                            print('__send__' + str(json_data))
+                            time.sleep(0.1)
+                    else:
+                        data = {'type': 'private_pic', 'image_64': image_64, 'to': to_user, 'username': username}
+                        pic = Image.open(filename)
+                        self.parent.pic_to_insert = ImageTk.PhotoImage(pic)
+                        text_area = self.parent.text_area
+                        t = "[" + to_user + ']'
+                        text_area.insert(END, t)
+                        text_area.image_create(END, image=self.parent.pic_to_insert)
 
             def send(self, socket, chat_name, et_input):
                 """点击发送按钮"""
                 text = et_input.get()
-                to_user = chat_name['text']
-                username = self.parent.username
-                print(to_user)
-                if to_user == '群聊':
-                    data = {'type': 'group_chat', 'msg': text, 'username': username}
-                elif to_user == '组播':
-                    return
-                else:
-                    # 私聊
-                    data = {'type': 'private_chat', 'msg': text,
-                            'to': to_user, 'username': username}
-                    text_area = self.parent.text_area
-                    t = "[" + to_user + ']' + text + '\n'
-                    text_area.insert(END, t)
-                json_data = json.dumps(data)
-                json_data = str.encode(json_data)
-                socket.send(json_data)
-                print('__send__' + str(json_data))
-                et_input.delete(0, END)
+                if text != "":  # 发送消息不能为空
+                    to_user = chat_name['text']
+                    username = self.parent.username
+                    print(to_user)
+                    if to_user == '群聊':
+                        data = {'type': 'group_chat', 'msg': text, 'username': username}
+                    elif to_user == '组播':
+                        return
+                    else:
+                        # 私聊
+                        data = {'type': 'private_chat', 'msg': text, 'to': to_user, 'username': username}
+                        text_area = self.parent.text_area
+                        t = "[" + to_user + ']' + text + '\n'
+                        text_area.insert(END, t)
+                    json_data = json.dumps(data)
+                    json_data = str.encode(json_data)
+                    socket.send(json_data)
+                    print('__send__' + str(json_data))
+                    et_input.delete(0, END)
 
         class ListenThread(threading.Thread):
             """Socket监听线程，对收到的信息作出相应反馈"""
@@ -271,6 +346,8 @@ class Client:
                 threading.Thread.__init__(self)
                 self.parent = parent
                 self.socket = socket
+                self.recvd_size = 0
+                self.recvd_pic = ''
 
             def run(self):
                 while True:
@@ -286,6 +363,7 @@ class Client:
                         "remove_user": self.list,
                         "group_chat": self.chat,
                         "private_chat": self.chat,
+                        "group_pic": self.pic,
                         "pong": self.pong
                     }
                     switch[receive_data['type']](receive_data)
@@ -320,7 +398,7 @@ class Client:
                     userlist.clear()
                     for l in list:
                         listbox.insert(END, l)  # 插入新列表
-                        if str(l) != '群聊' and str(l) != '组播':
+                        if str(l) != '群聊' and str(l) != '组播' and str(l) != self.parent.username:
                             userlist[l] = {}
 
             def chat(self, data):
@@ -331,6 +409,28 @@ class Client:
                 else:
                     text = ('[' + data['username'] + ']' + data['username'] + ': ' + data['msg'] + '\n')
                 text_area.insert(END, text)
+
+            def pic(self, data):
+                """接收图片并打印"""
+                text_area = self.parent.text_area
+                pic_size = data['pic_size']
+                self.recvd_pic += data['image_64']
+                self.recvd_size += BUFFSIZE
+                if self.recvd_size == pic_size and data['end'] == 'True':
+                    image_data = base64.b64decode(self.recvd_pic)
+                    image_name = str(uuid.uuid1())
+                    image_name += '.jpg'
+                    file = open(image_fold_path + image_name, 'wb')
+                    file.write(image_data)
+                    file.close()
+                    if data['type'] == 'group_pic':
+                        text = ('[群聊]' + data['username'] + ': ')
+                    text_area.insert(END, text)
+                    pic = Image.open(image_fold_path + image_name)
+                    self.parent.pic_to_insert = ImageTk.PhotoImage(pic)
+                    text_area.image_create(END, image=self.parent.pic_to_insert)
+                    self.recvd_pic = ''
+                    self.recvd_size = 0
 
             def pong(self, data):
                 """ping pong!"""

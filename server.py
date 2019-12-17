@@ -1,13 +1,16 @@
 import socket
 import threading
 import json
+import time
 
 CHAT_SERVER_NAME = 'server'
 
 HOST = '127.0.0.1'  # 主机地址
 PORT = 8888  # 端口号
-BUFFSIZE = 2048  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
+BUFFSIZE = 1024  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
 ADDR = (HOST, PORT)  # 链接地址
+
+grouplist = {}  # 群聊列表
 
 
 # 公用函数
@@ -66,6 +69,17 @@ class Handle:
         send_to_userlist = get_keys(Handle.userlist, send_to_namelist)
         self.send_socket_to_users(send_to_userlist, data)
 
+    def create_group(self, data):
+        """用户创建了群聊"""
+        group_dic = data['group']
+        grouplist.update(group_dic)
+        print(grouplist)
+
+    def group_pic(self, data):
+        """群聊图片"""
+        userlist = [user for user in Handle.userlist]
+        self.send_socket_to_all(userlist, data)
+
     @staticmethod
     def send_socket_to_users(send_to_userlist, data):
         """向用户列表发送信息包"""
@@ -110,6 +124,8 @@ class Handle:
             "init_list": self.init_list,
             "group_chat": self.group_chat,
             "private_chat": self.private_chat,
+            "create_group": self.create_group,
+            "group_pic": self.group_pic,
         }
         try:
             switch[type](data)
@@ -157,6 +173,7 @@ class ClientThread(threading.Thread):
 class ChatServer:
     def __main__(self):
         tcpSerSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcpSerSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # 在绑定前调用setsockopt让套接字允许地址重用
         tcpSerSock.bind(ADDR)
         tcpSerSock.listen(5)
 
