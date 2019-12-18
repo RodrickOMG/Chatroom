@@ -73,11 +73,35 @@ class Handle:
         send_to_userlist = get_keys(Handle.userlist, send_to_namelist)
         self.send_socket_to_users(send_to_userlist, data)
 
+    def create_group_chat(self, data):
+        """创建的群聊聊天"""
+        send_to_namelist = data['to_list']
+        print(send_to_namelist)
+        send_to_userlist = []
+        for username in send_to_namelist[data['group_name']]:
+            print(username)
+            send_to_userlist += get_keys(Handle.userlist, username)
+        self.send_socket_to_users(send_to_userlist, data)
+
     def create_group(self, data):
         """用户创建了群聊"""
         group_dic = data['group']
-        grouplist.update(group_dic)
+        print(group_dic)
+        print(data['group_name'])
+        group_member_list = []
+        send_to_userlist = []
+        for username in group_dic[data['group_name']]:
+            print(username)
+            group_member_list += username
+            send_to_userlist += get_keys(Handle.userlist, username)
+            try:
+                grouplist[username].update(group_dic)
+            except:
+                grouplist[username] = group_dic
         print(grouplist)
+        print(send_to_userlist)
+        self.send_socket_to_users(send_to_userlist, data)
+
 
     def group_pic(self, data):
         """群聊图片"""
@@ -142,6 +166,7 @@ class Handle:
             "group_chat": self.group_chat,
             "private_chat": self.private_chat,
             "create_group": self.create_group,
+            "create_group_chat": self.create_group_chat,
             "group_pic": self.group_pic,
         }
         try:

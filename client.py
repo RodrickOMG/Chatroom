@@ -262,20 +262,18 @@ class Client:
                         else:
                             self.parent.parent.error_msg("该群聊名称已存在")
                             return False
-                    grouplist[group_name] = group_namelist
                     send_grouplist[group_name] = group_namelist
                     tk.destroy()
                     parent_tk.destroy()
                 except:
                     self.parent.parent.error_msg("未选中任何联系人")
-                data = {'type': 'create_group', 'group': send_grouplist, 'username': self.parent.username}
+                data = {'type': 'create_group', 'group': send_grouplist, 'group_name': group_name, 'username': self.parent.username}
                 json_data = json.dumps(data)
                 json_data = str.encode(json_data)
                 self.parent.socket.send(json_data)
                 print('__send__' + str(json_data))
                 print(group_name)
                 print(group_namelist)
-                print(grouplist)
 
             def picture(self, socket, chat_name):
                 filename = filedialog.askopenfilename(title='请选择发送的图片')
@@ -328,8 +326,8 @@ class Client:
                     print(to_user)
                     if to_user == '群聊':
                         data = {'type': 'group_chat', 'msg': text, 'username': username}
-                    elif to_user == '组播':
-                        return
+                    elif to_user in grouplist.keys():
+                        data = {'type': 'create_group_chat', 'msg': text, 'username': username, 'to_list': grouplist[to_user], 'group_name': to_user}
                     else:
                         # 私聊
                         data = {'type': 'private_chat', 'msg': text, 'to': to_user, 'username': username}
@@ -366,6 +364,8 @@ class Client:
                         "remove_user": self.list,
                         "group_chat": self.chat,
                         "private_chat": self.chat,
+                        "create_group": self.list,
+                        "create_group_chat": self.chat,
                         "group_pic": self.pic,
                         "pong": self.pong
                     }
@@ -392,6 +392,13 @@ class Client:
                     text_area = self.parent.text_area
                     text = (data['username'] + "退出聊天室\n")
                     text_area.insert(END, text)
+                elif data['type'] == 'create_group':
+                    print("fuck")
+                    grouplist[data['group_name']] = data['group']
+                    listbox = self.parent.listbox
+                    new_group = data['group_name']
+                    listbox.insert(END, new_group)  # 插入新列表
+                    print(grouplist)
                 else:
                     count = 0
                     listbox = self.parent.listbox
@@ -403,12 +410,16 @@ class Client:
                         listbox.insert(END, l)  # 插入新列表
                         if str(l) != '群聊' and str(l) != '组播' and str(l) != self.parent.username:
                             userlist[l] = {}
+                    for l in grouplist.keys():
+                        listbox.insert(END, l)  # 插入新列表
 
             def chat(self, data):
                 """接收聊天信息并打印"""
                 text_area = self.parent.text_area
                 if data ['type'] == 'group_chat':
                     text = ('[群聊]' + data['username'] + ': ' + data['msg'] + '\n')
+                elif data ['type'] == 'create_group_chat':
+                    text = ('[' + data['group_name'] + ']' + data['username'] + ': ' + data['msg'] + '\n')
                 else:
                     text = ('[' + data['username'] + ']' + data['username'] + ': ' + data['msg'] + '\n')
                 text_area.insert(END, text)
