@@ -2,6 +2,8 @@ import socket
 import threading
 import json
 import time
+import uuid
+import base64
 
 CHAT_SERVER_NAME = 'server'
 
@@ -11,6 +13,8 @@ BUFFSIZE = 1024  # 缓存区大小，单位是字节，这里设定了2K的缓�
 ADDR = (HOST, PORT)  # 链接地址
 
 grouplist = {}  # 群聊列表
+
+image_fold_path = '/Users/rodrick/Documents/python/Chatroom/server_temp/img/'
 
 
 # 公用函数
@@ -116,6 +120,19 @@ class Handle:
         except Exception as err:
             print(err)
 
+    def recv_pic(self, socket):
+        name = str(uuid.uuid1())  # 获取文件名
+        file_path = image_fold_path + name  # 将文件夹和图片名连接起来
+        print(file_path)
+        print('Start saving!')
+        f = open(file_path+'.png', 'wb+')
+        while True:
+            data = socket.recv(BUFFSIZE)
+            if data == 'EOF'.encode():
+                print('Saving completed!')
+                break
+            f.write(data)
+
     def __main__(self, data):
         """处理信息包"""
         type = data["type"]
@@ -150,6 +167,15 @@ class ClientThread(threading.Thread):
                 print("receive data from: " + data['username'])
                 if data['type'] == 'logout':
                     break
+                elif data['type'] == 'group_pic':
+                    while True:
+                        data = self.user.tcpCliSock.recv(BUFFSIZE)
+                        print(data)
+                        data = data.decode()
+                        print("begin receive picture")
+                        if data == 'quit':
+                            break
+                        handle.recv_pic(self.user.tcpCliSock)
                 else:
                     handle.__main__(data)
         except Exception as err:

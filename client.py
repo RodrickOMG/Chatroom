@@ -10,7 +10,7 @@ from tkmacosx import Button
 from PIL import Image, ImageTk
 from signal import signal, SIGPIPE, SIG_DFL
 
-signal(SIGPIPE,SIG_DFL)
+signal(SIGPIPE, SIG_DFL)
 
 HOST = '127.0.0.1'  # 主机地址
 PORT = 8888  # 端口号
@@ -19,7 +19,7 @@ ADDR = (HOST, PORT)  # 链接地址
 count = 0
 userlist = {}
 grouplist = {}
-image_fold_path = '/Users/rodrick/Documents/python/Chatroom/temp/img'
+image_fold_path = '/Users/rodrick/Documents/python/Chatroom/temp/img/'
 
 
 class Client:
@@ -281,34 +281,37 @@ class Client:
                 filename = filedialog.askopenfilename(title='请选择发送的图片')
                 to_user = chat_name['text']
                 username = self.parent.username
-                flag = 1
                 if filename:
                     print(filename)
                     name = filename.split('/')[-1]
                     print(name)
-                    image_64 = base64.b64encode(open(filename, "rb").read())
-                    image_64 = image_64.decode('ascii')
-                    send_data = 0
+                    print('Start uploading image!')
+                    print('Waiting.......')
                     if to_user == '群聊':
-                        while flag == 1:
-                            if send_data + BUFFSIZE < len(image_64):
-                                print(image_64[send_data:send_data+BUFFSIZE-1])
-                                send_image_64 = image_64[send_data:send_data + BUFFSIZE-1]
-                                data = {'type': 'group_pic', 'image_64': send_image_64,
-                                        'username': username, 'end': 'False', 'pic_size': len(image_64)}
-                                send_data += BUFFSIZE
-                            else:
-                                send_image_64 = image_64[send_data:len(image_64)-1]
-                                data = {'type': 'group_pic', 'image_64': send_image_64,
-                                        'username': username, 'end': 'True', 'pic_size': len(image_64)}
-                                flag = 0
-                            json_data = json.dumps(data)
-                            json_data = str.encode(json_data)
-                            socket.send(json_data)
-                            print('__send__' + str(json_data))
-                            time.sleep(0.1)
+                        data = {'type': 'group_pic', 'username': username}
+                        json_data = json.dumps(data)
+                        json_data = str.encode(json_data)
+                        socket.send(json_data)
+                        time.sleep(0.1)
+                        print('__send__' + str(json_data))
+                        message = 'group_pic '
+                        socket.send(message.encode())
+                        time.sleep(0.1)
+                        print('Start uploading image!')
+                        print('Waiting.......')
+                        with open(filename, 'rb') as f:
+                            while True:
+                                send_data = f.read(BUFFSIZE)
+                                print(send_data)
+                                if not send_data:
+                                    break
+                                socket.send(send_data)
+                            time.sleep(0.1)  # 延时确保文件发送完整
+                            socket.send('EOF'.encode())
+                            print('Upload completed')
+                        socket.send('quit'.encode())
+                        time.sleep(0.1)
                     else:
-                        data = {'type': 'private_pic', 'image_64': image_64, 'to': to_user, 'username': username}
                         pic = Image.open(filename)
                         self.parent.pic_to_insert = ImageTk.PhotoImage(pic)
                         text_area = self.parent.text_area
