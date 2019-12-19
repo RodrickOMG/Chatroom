@@ -14,7 +14,7 @@ signal(SIGPIPE, SIG_DFL)
 
 HOST = '127.0.0.1'  # 主机地址
 PORT = 8888  # 端口号
-BUFFSIZE = 1024  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
+BUFFSIZE = 2048  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
 ADDR = (HOST, PORT)  # 链接地址
 count = 0
 userlist = {}
@@ -84,6 +84,7 @@ class Client:
                 sock.send(json_data)
                 print('__send__' + str(json_data))
                 receive_json_data = sock.recv(BUFFSIZE)
+                print(receive_json_data)
                 receive_data = json.loads(receive_json_data, strict=False)
                 if receive_data["type"] == "login" and receive_data["username"] == username and \
                         receive_data["status"] == True:
@@ -253,11 +254,19 @@ class Client:
                             print(index)
                             group_name += '、' + listbox.get(index)
                             group_namelist.append(listbox.get(index))
-                        group_name += '的群聊'
+                        if group_name == self.parent.username:  # 如果名字只有本人则说明没有选中其他用户
+                            self.parent.parent.error_msg("未选中任何联系人")
+                            return False
+                        else:
+                            group_name += '的群聊'
 
                     else:
                         if group_name not in grouplist:
+                            if len(index_list) == 0:
+                                self.parent.parent.error_msg("未选中任何联系人")
+                                return False
                             for index in range(len(index_list)):
+                                print(index)
                                 group_namelist.append(listbox.get(index))
                         else:
                             self.parent.parent.error_msg("该群聊名称已存在")
@@ -276,6 +285,8 @@ class Client:
                 print(group_namelist)
 
             def picture(self, socket, chat_name):
+                root = Tk()
+                root.withdraw()  # 不让选择文件对话框一直显示
                 filename = filedialog.askopenfilename(title='请选择发送的图片')
                 to_user = chat_name['text']
                 username = self.parent.username
@@ -309,11 +320,12 @@ class Client:
                             print('Upload completed')
                         socket.send('quit'.encode())
                         time.sleep(0.1)
+                        f.close()
                     else:
                         pic = Image.open(filename)
                         self.parent.pic_to_insert = ImageTk.PhotoImage(pic)
                         text_area = self.parent.text_area
-                        t = "[" + to_user + ']'
+                        t = "[" + to_user + ']\n'
                         text_area.insert(END, t)
                         text_area.image_create(END, image=self.parent.pic_to_insert)
 
@@ -393,7 +405,6 @@ class Client:
                     text = (data['username'] + "退出聊天室\n")
                     text_area.insert(END, text)
                 elif data['type'] == 'create_group':
-                    print("fuck")
                     grouplist[data['group_name']] = data['group']
                     listbox = self.parent.listbox
                     new_group = data['group_name']
@@ -402,13 +413,13 @@ class Client:
                 else:
                     count = 0
                     listbox = self.parent.listbox
-                    list = ['群聊', '组播']
+                    list = ['群聊']
                     list += data['list']
                     listbox.delete(0, END)  # 清空现有列表
                     userlist.clear()
                     for l in list:
                         listbox.insert(END, l)  # 插入新列表
-                        if str(l) != '群聊' and str(l) != '组播' and str(l) != self.parent.username:
+                        if str(l) != '群聊' and str(l) != self.parent.username:
                             userlist[l] = {}
                     for l in grouplist.keys():
                         listbox.insert(END, l)  # 插入新列表
@@ -423,28 +434,55 @@ class Client:
                 else:
                     text = ('[' + data['username'] + ']' + data['username'] + ': ' + data['msg'] + '\n')
                 text_area.insert(END, text)
+                text_area.see(END)
 
             def pic(self, data):
+                sender = data['username']
+                if data['type'] == 'group_pic':
+                    chat_type = 'group'
+                else:
+                    chat_type = 'private'
+                print("hhh")
+                while True:
+                    data = self.socket.recv(BUFFSIZE)
+                    print(data)
+                    data = data.decode()
+                    print("begin receive picture")
+                    if data == 'quit':
+                        break
+                    self.recv_pic(sender, chat_type)
+
+            def recv_pic(self, sender, chat_type):
                 """接收图片并打印"""
-                text_area = self.parent.text_area
-                pic_size = data['pic_size']
-                self.recvd_pic += data['image_64']
-                self.recvd_size += BUFFSIZE
-                if self.recvd_size == pic_size and data['end'] == 'True':
-                    image_data = base64.b64decode(self.recvd_pic)
-                    image_name = str(uuid.uuid1())
-                    image_name += '.jpg'
-                    file = open(image_fold_path + image_name, 'wb')
-                    file.write(image_data)
-                    file.close()
-                    if data['type'] == 'group_pic':
-                        text = ('[群聊]' + data['username'] + ': ')
-                    text_area.insert(END, text)
-                    pic = Image.open(image_fold_path + image_name)
+                name = str(uuid.uuid1())  # 获取文件名
+                file_path = image_fold_path + name  # 将文件夹和图片名连接起来
+                print('Start saving!')
+                with open(file_path + '.png', 'wb+') as f:
+                    while True:
+                        data = self.socket.recv(BUFFSIZE)
+                        print(data)
+                        if data == 'EOF'.encode():
+                            print('Saving completed!')
+                            f.write(data)
+                            break
+                        f.write(data)
+                time.sleep(0.1)
+                f.close()
+                if chat_type == 'group':
+                    pic = Image.open(file_path + '.png')
+                    (x, y) = pic.size  # read image size
+                    if x > 350:
+                        x_s = 350  # define standard width
+                        y_s = int(y * x_s / x)  # calc height based on standard width
+                        pic = pic.resize((x_s, y_s), Image.ANTIALIAS)  # resize image with high-quality
                     self.parent.pic_to_insert = ImageTk.PhotoImage(pic)
+                    text_area = self.parent.text_area
+                    t = '[群聊]' + sender + ':\n'
+                    text_area.insert(END, t)
                     text_area.image_create(END, image=self.parent.pic_to_insert)
-                    self.recvd_pic = ''
-                    self.recvd_size = 0
+                    text_area.insert(END, '\n')
+                    text_area.see(END)
+
 
             def pong(self, data):
                 """ping pong!"""

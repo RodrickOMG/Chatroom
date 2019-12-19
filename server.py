@@ -9,7 +9,7 @@ CHAT_SERVER_NAME = 'server'
 
 HOST = '127.0.0.1'  # 主机地址
 PORT = 8888  # 端口号
-BUFFSIZE = 1024  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
+BUFFSIZE = 2048  # 缓存区大小，单位是字节，这里设定了2K的缓冲区
 ADDR = (HOST, PORT)  # 链接地址
 
 grouplist = {}  # 群聊列表
@@ -38,34 +38,33 @@ class Handle:
     def login(self, data):
         """处理登录信息包"""
         if data["username"] in Handle.userlist.values() or self.user in Handle.userlist.keys():
-            data["status"] = False
-            data["info"] = "该用户名已被占用"
+            data['status'] = False
+            data['info'] = '该用户名已被占用'
         else:
-            data["status"] = True
-            Handle.userlist[self.user] = data["username"]
-            Handle.usernames.append(data["username"])
-            self.user.username = data["username"]
+            data['status'] = True
+            Handle.userlist[self.user] = data['username']
+            Handle.usernames.append(data['username'])
+            self.user.username = data['username']
             self.refresh_list(data)
+            time.sleep(0.1)
         self.send_socket_to_self(data)
 
     def refresh_list(self, data):
         """刷新在线用户列表"""
         nameList = Handle.usernames
         data["list"] = nameList
-        userlist = [user for user in Handle.userlist]
-        self.send_socket_to_all(userlist, data)
+        self.send_socket_to_all(data)
 
     def init_list(self, data):
         """获取在线用户列表"""
-        data["type"] = "login"
+        data["type"] = 'login'
         nameList = Handle.usernames
         data["list"] = nameList
         self.send_socket_to_self(data)
 
     def group_chat(self, data):
         """群聊"""
-        userlist = [user for user in Handle.userlist]
-        self.send_socket_to_all(userlist, data)
+        self.send_socket_to_all(data)
 
     def private_chat(self, data):
         """私聊"""
@@ -103,10 +102,44 @@ class Handle:
         self.send_socket_to_users(send_to_userlist, data)
 
 
-    def group_pic(self, data):
+    def send_pic_to_all(self, filepath, username):
         """群聊图片"""
-        userlist = [user for user in Handle.userlist]
-        self.send_socket_to_all(userlist, data)
+        data = {'type': 'group_pic', 'username': username}
+        for user in Handle.userlist:
+            print(user)
+            self.send_socket_to_user(user, data)
+            time.sleep(0.1)
+            message = 'group_pic '
+            user.tcpCliSock.send(message.encode())
+            time.sleep(0.1)
+            print('Start uploading image!')
+            print('Waiting.......')
+            print(filepath)
+            with open(filepath + '.png', 'rb') as f:
+                while True:
+                    send_data = f.read(BUFFSIZE)
+                    print(send_data)
+                    if not send_data:
+                        break
+                    user.tcpCliSock.send(send_data)
+                time.sleep(0.1)  # 延时确保文件发送完整
+                user.tcpCliSock.send('EOF'.encode())
+                print('Upload completed')
+                time.sleep(0.1)
+            f.close()
+            user.tcpCliSock.send('quit'.encode())
+            time.sleep(0.1)
+            # data = {'type': 'group_pic_done', 'username': username}
+            # self.send_socket_to_user(user, data)
+            # time.sleep(0.1)
+
+    @staticmethod
+    def send_socket_to_user(user, data):
+        """向用户发送信息包"""
+        json_data = json.dumps(data)
+        json_data = str.encode(json_data)
+        user.tcpCliSock.send(json_data)
+        print("Send to users: " + str(json_data))
 
     @staticmethod
     def send_socket_to_users(send_to_userlist, data):
@@ -118,8 +151,9 @@ class Handle:
         print("Send to users: " + str(json_data))
 
     @staticmethod
-    def send_socket_to_all(userlist, data):
+    def send_socket_to_all(data):
         """给所有用户发送信息包"""
+        userlist = [user for user in Handle.userlist]
         json_data = json.dumps(data)
         json_data = str.encode(json_data)
         for user in userlist:
@@ -144,18 +178,17 @@ class Handle:
         except Exception as err:
             print(err)
 
-    def recv_pic(self, socket):
-        name = str(uuid.uuid1())  # 获取文件名
-        file_path = image_fold_path + name  # 将文件夹和图片名连接起来
-        print(file_path)
+    def recv_pic(self, socket, filepath):
         print('Start saving!')
-        f = open(file_path+'.png', 'wb+')
-        while True:
-            data = socket.recv(BUFFSIZE)
-            if data == 'EOF'.encode():
-                print('Saving completed!')
-                break
-            f.write(data)
+        with open(filepath+'.png', 'wb+') as f:
+            while True:
+                data = socket.recv(BUFFSIZE)
+                if data == 'EOF'.encode():
+                    print('Saving completed!')
+                    break
+                f.write(data)
+        f.close()
+        time.sleep(0.1)
 
     def __main__(self, data):
         """处理信息包"""
@@ -167,7 +200,6 @@ class Handle:
             "private_chat": self.private_chat,
             "create_group": self.create_group,
             "create_group_chat": self.create_group_chat,
-            "group_pic": self.group_pic,
         }
         try:
             switch[type](data)
@@ -190,17 +222,20 @@ class ClientThread(threading.Thread):
                 json_data = self.user.tcpCliSock.recv(BUFFSIZE)
                 data = json.loads(json_data, strict=False)
                 print("receive data from: " + data['username'])
+                sender = data['username']
                 if data['type'] == 'logout':
                     break
                 elif data['type'] == 'group_pic':
+                    name = str(uuid.uuid1())  # 获取文件名
+                    filepath = image_fold_path + name  # 将文件夹和图片名连接起来
                     while True:
                         data = self.user.tcpCliSock.recv(BUFFSIZE)
-                        print(data)
                         data = data.decode()
                         print("begin receive picture")
                         if data == 'quit':
                             break
-                        handle.recv_pic(self.user.tcpCliSock)
+                        handle.recv_pic(self.user.tcpCliSock, filepath)
+                    handle.send_pic_to_all(filepath, sender)
                 else:
                     handle.__main__(data)
         except Exception as err:
