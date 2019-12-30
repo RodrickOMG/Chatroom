@@ -15,6 +15,7 @@ ADDR = (HOST, PORT)  # 链接地址
 grouplist = {}  # 群聊列表
 
 image_fold_path = '/Users/rodrick/Documents/python/Chatroom/server_temp/img/'
+file_fold_path = '/Users/rodrick/Documents/python/Chatroom/server_temp/file/'
 
 
 # 公用函数
@@ -133,6 +134,34 @@ class Handle:
             # self.send_socket_to_user(user, data)
             # time.sleep(0.1)
 
+    def send_file_to_all(self, filepath, username, name):
+        """群聊文件"""
+        data = {'type': 'group_file', 'username': username, 'filename': name}
+        for user in Handle.userlist:
+            print(user)
+            self.send_socket_to_user(user, data)
+            time.sleep(0.1)
+            message = 'group_pic '
+            user.tcpCliSock.send(message.encode())
+            time.sleep(0.1)
+            print('Start uploading file!')
+            print('Waiting.......')
+            print(filepath)
+            with open(filepath, 'rb') as f:
+                while True:
+                    send_data = f.read(BUFFSIZE)
+                    print(send_data)
+                    if not send_data:
+                        break
+                    user.tcpCliSock.send(send_data)
+                time.sleep(0.1)  # 延时确保文件发送完整
+                user.tcpCliSock.send('EOF'.encode())
+                print('Upload completed')
+                time.sleep(0.1)
+            f.close()
+            user.tcpCliSock.send('quit'.encode())
+            time.sleep(0.1)
+
     @staticmethod
     def send_socket_to_user(user, data):
         """向用户发送信息包"""
@@ -190,6 +219,18 @@ class Handle:
         f.close()
         time.sleep(0.1)
 
+    def recv_file(self, socket, filepath):
+        print('Start saving!')
+        with open(filepath, 'wb+') as f:
+            while True:
+                data = socket.recv(BUFFSIZE)
+                if data == 'EOF'.encode():
+                    print('Saving completed!')
+                    break
+                f.write(data)
+        f.close()
+        time.sleep(0.1)
+
     def __main__(self, data):
         """处理信息包"""
         type = data["type"]
@@ -236,6 +277,17 @@ class ClientThread(threading.Thread):
                             break
                         handle.recv_pic(self.user.tcpCliSock, filepath)
                     handle.send_pic_to_all(filepath, sender)
+                elif data['type'] == 'group_file':
+                    name = data['filename']  # 获取文件名
+                    filepath = file_fold_path + name  # 将文件夹和文件名连接起来
+                    while True:
+                        data = self.user.tcpCliSock.recv(BUFFSIZE)
+                        data = data.decode()
+                        print("begin receive file")
+                        if data == 'quit':
+                            break
+                        handle.recv_file(self.user.tcpCliSock, filepath)
+                    handle.send_file_to_all(filepath, sender, name)
                 else:
                     handle.__main__(data)
         except Exception as err:

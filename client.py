@@ -20,7 +20,7 @@ count = 0
 userlist = {}
 grouplist = {}
 image_fold_path = '/Users/rodrick/Documents/python/Chatroom/temp/img/'
-
+file_fold_path = '/Users/rodrick/Documents/python/Chatroom/temp/file/'
 
 class Client:
     def __init__(self):
@@ -168,7 +168,7 @@ class Client:
                 bt_pic = Button(f, bg='#3C3F41', fg='#D636D2', width=55, text="图片", font="Arial, 14", command=lambda: self.picture(parent.socket, chat_name))
                 bt_pic.place(x=110, y=405, anchor=CENTER)
 
-                bt_file = Button(f, bg='#3C3F41', fg='#D636D2', width=55, text="文件", font="Arial, 14", command=lambda: self.send(parent.socket, chat_name, et_input))
+                bt_file = Button(f, bg='#3C3F41', fg='#D636D2', width=55, text="文件", font="Arial, 14", command=lambda: self.file(parent.socket, chat_name))
                 bt_file.place(x=180, y=405, anchor=CENTER)
 
                 # 下方内容输入
@@ -317,17 +317,64 @@ class Client:
                                 socket.send(send_data)
                             time.sleep(0.1)  # 延时确保文件发送完整
                             socket.send('EOF'.encode())
+                            time.sleep(0.1)
                             print('Upload completed')
                         socket.send('quit'.encode())
                         time.sleep(0.1)
                         f.close()
                     else:
                         pic = Image.open(filename)
+                        (x, y) = pic.size  # read image size
+                        if x > 350:
+                            x_s = 350  # define standard width
+                            y_s = int(y * x_s / x)  # calc height based on standard width
+                            pic = pic.resize((x_s, y_s), Image.ANTIALIAS)  # resize image with high-quality
                         self.parent.pic_to_insert = ImageTk.PhotoImage(pic)
                         text_area = self.parent.text_area
                         t = "[" + to_user + ']\n'
                         text_area.insert(END, t)
                         text_area.image_create(END, image=self.parent.pic_to_insert)
+                        text_area.insert(END, '\n')
+                        text_area.see(END)
+
+            def file(self, socket, chat_name):
+                root = Tk()
+                root.withdraw()  # 不让选择文件对话框一直显示
+                filename = filedialog.askopenfilename(title='请选择发送的文件')
+                to_user = chat_name['text']
+                username = self.parent.username
+                if filename:
+                    print(filename)
+                    name = filename.split('/')[-1]
+                    print(name)
+                    print('Start uploading file!')
+                    print('Waiting.......')
+                    if to_user == '群聊':
+                        data = {'type': 'group_file', 'username': username, 'filename': name}
+                        json_data = json.dumps(data)
+                        json_data = str.encode(json_data)
+                        socket.send(json_data)
+                        time.sleep(0.1)
+                        print('__send__' + str(json_data))
+                        message = 'group_file'
+                        socket.send(message.encode())
+                        time.sleep(0.1)
+                        print('Start uploading file!')
+                        print('Waiting.......')
+                        with open(filename, 'rb') as f:
+                            while True:
+                                send_data = f.read(BUFFSIZE)
+                                print(send_data)
+                                if not send_data:
+                                    break
+                                socket.send(send_data)
+                            time.sleep(0.1)  # 延时确保文件发送完整
+                            socket.send('EOF'.encode())
+                            time.sleep(0.1)
+                            print('Upload completed')
+                        socket.send('quit'.encode())
+                        time.sleep(0.1)
+                        f.close()
 
             def send(self, socket, chat_name, et_input):
                 """点击发送按钮"""
@@ -379,6 +426,7 @@ class Client:
                         "create_group": self.list,
                         "create_group_chat": self.chat,
                         "group_pic": self.pic,
+                        "group_file": self.file,
                         "pong": self.pong
                     }
                     switch[receive_data['type']](receive_data)
@@ -483,6 +531,43 @@ class Client:
                     text_area.insert(END, '\n')
                     text_area.see(END)
 
+            def file(self, data):
+                sender = data['username']
+                filename = data['filename']
+                if data['type'] == 'group_file':
+                    chat_type = 'group'
+                else:
+                    chat_type = 'private'
+                print("hhh")
+                while True:
+                    data = self.socket.recv(BUFFSIZE)
+                    print(data)
+                    data = data.decode()
+                    print("begin receive file")
+                    if data == 'quit':
+                        break
+                    self.recv_file(sender, chat_type, filename)
+
+            def recv_file(self, sender, chat_type, name):
+                """接收文件并打印"""
+                file_path = file_fold_path + name  # 将文件夹和图片名连接起来
+                print('Start saving!')
+                with open(file_path, 'wb+') as f:
+                    while True:
+                        data = self.socket.recv(BUFFSIZE)
+                        print(data)
+                        if data == 'EOF'.encode():
+                            print('Saving completed!')
+                            f.write(data)
+                            break
+                        f.write(data)
+                time.sleep(0.1)
+                f.close()
+                if chat_type == 'group':
+                    text_area = self.parent.text_area
+                    t = '[群聊]' + sender + ': send file ' + name + '\n'
+                    text_area.insert(END, t)
+                    text_area.see(END)
 
             def pong(self, data):
                 """ping pong!"""
