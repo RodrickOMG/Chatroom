@@ -54,7 +54,7 @@ class Handle:
         """刷新在线用户列表"""
         nameList = Handle.usernames
         data["list"] = nameList
-        self.send_socket_to_all(data)
+        self.send_socket_to_all(data)  # 向所有用户进行广播
 
     def init_list(self, data):
         """获取在线用户列表"""
@@ -69,7 +69,7 @@ class Handle:
 
     def private_chat(self, data):
         """私聊"""
-        send_to_namelist = data['to']
+        send_to_namelist = data['to']  # 确定发送对象
         send_to_userlist = get_keys(Handle.userlist, send_to_namelist)
         self.send_socket_to_users(send_to_userlist, data)
 
@@ -77,30 +77,24 @@ class Handle:
         """创建的群聊聊天"""
         send_to_namelist = data['to_list']
         print(send_to_namelist)
-        send_to_userlist = []
-        for username in send_to_namelist[data['group_name']]:
-            print(username)
+        send_to_userlist = []  # 群聊成员待发送列表
+        for username in send_to_namelist[data['group_name']]:  # 通过用户名找到对应的User对象
             send_to_userlist += get_keys(Handle.userlist, username)
         self.send_socket_to_users(send_to_userlist, data)
 
     def create_group(self, data):
         """用户创建了群聊"""
         group_dic = data['group']
-        print(group_dic)
-        print(data['group_name'])
         group_member_list = []
         send_to_userlist = []
         for username in group_dic[data['group_name']]:
-            print(username)
             group_member_list += username
             send_to_userlist += get_keys(Handle.userlist, username)
             try:
-                grouplist[username].update(group_dic)
+                grouplist[username].update(group_dic)  # 如果该用户已经存在群聊则更新
             except:
-                grouplist[username] = group_dic
-        print(grouplist)
-        print(send_to_userlist)
-        self.send_socket_to_users(send_to_userlist, data)
+                grouplist[username] = group_dic  # 如果第一次创建群聊则新建一个列表
+        self.send_socket_to_users(send_to_userlist, data)  # 向群聊成员广播消息进行列表更新
 
 
     def send_pic_to_all(self, filepath, username):

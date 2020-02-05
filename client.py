@@ -549,7 +549,7 @@ class Client:
                     self.recv_file(sender, chat_type, filename)
 
             def recv_file(self, sender, chat_type, name):
-                """接收文件并打印"""
+                """接收文件"""
                 file_path = file_fold_path + name  # 将文件夹和图片名连接起来
                 print('Start saving!')
                 with open(file_path, 'wb+') as f:
